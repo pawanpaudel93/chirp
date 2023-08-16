@@ -12,8 +12,12 @@ datasource db {
     shadowDatabaseUrl = env("POSTGRES_URL_NON_POOLING") // used for migrations
 }
 
-model Example {
+model Post {
     id        String   @id @default(cuid())
     createdAt DateTime @default(now())
-    updatedAt DateTime @updatedAt
+
+    content  String @db.VarChar(255)
+    authorId String
+
+    @@index([authorId])
 }
