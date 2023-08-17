@@ -3,8 +3,8 @@ name: CI
 on: [push, pull_request]
 
 env:
-  POSTGRES_URL: "https://fake.com"
   POSTGRES_PRISMA_URL: "https://fake.com"
+  POSTGRES_URL_NON_POOLING: "https://fake.com"
 
 jobs:
   build:
