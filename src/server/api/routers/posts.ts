@@ -9,6 +9,7 @@ import {
 } from "~/server/api/trpc";
 import { Ratelimit } from "@upstash/ratelimit";
 import { Redis } from "@upstash/redis";
+import { Post } from "@prisma/client";
 
 const filterUserForClient = (user: User) => {
   return {
@@ -16,6 +17,32 @@ const filterUserForClient = (user: User) => {
     username: user.username,
     imageUrl: user.imageUrl,
   };
+};
+
+const addUserDataToPosts = async (posts: Post[]) => {
+  const users = (
+    await clerkClient.users.getUserList({
+      userId: posts.map((post) => post.authorId),
+      limit: 100,
+    })
+  ).map(filterUserForClient);
+
+  return posts.map((post) => {
+    const author = users.find((user) => user.id === post.authorId);
+    if (!author?.username) {
+      throw new TRPCError({
+        code: "INTERNAL_SERVER_ERROR",
+        message: "Author for post not found",
+      });
+    }
+    return {
+      post,
+      author: {
+        ...author,
+        username: author.username,
+      },
+    };
+  });
 };
 
 // Create a new ratelimiter, that allows 10 requests per 10 seconds
@@ -42,29 +69,7 @@ export const postsRouter = createTRPCRouter({
       ],
     });
 
-    const users = (
-      await clerkClient.users.getUserList({
-        userId: posts.map((post) => post.authorId),
-        limit: 100,
-      })
-    ).map(filterUserForClient);
-
-    return posts.map((post) => {
-      const author = users.find((user) => user.id === post.authorId);
-      if (!author?.username) {
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: "Author for post not found",
-        });
-      }
-      return {
-        post,
-        author: {
-          ...author,
-          username: author.username,
-        },
-      };
-    });
+    return addUserDataToPosts(posts);
   }),
 
   create: privateProcedure
@@ -88,5 +93,26 @@ export const postsRouter = createTRPCRouter({
       });
 
       return post;
+    }),
+
+  getPostsByUserId: publicProcedure
+    .input(
+      z.object({
+        userId: z.string(),
+      })
+    )
+    .query(async ({ ctx, input: { userId } }) => {
+      const posts = await ctx.prisma.post.findMany({
+        where: {
+          authorId: userId,
+        },
+        take: 100,
+        orderBy: [
+          {
+            createdAt: "desc",
+          },
+        ],
+      });
+      return addUserDataToPosts(posts);
     }),
 });
