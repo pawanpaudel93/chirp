@@ -1,28 +1,52 @@
-import { useUser } from "@clerk/nextjs";
+import { type NextPage, type GetStaticPaths, type GetStaticProps } from "next";
 import Head from "next/head";
 import { api } from "~/utils/api";
-import dayjs from "dayjs";
-import relativeTime from "dayjs/plugin/relativeTime";
+import { PageLayout } from "~/components/layout";
+import { PostView } from "~/components/postview";
+import { generateSSGHelper } from "~/server/helpers/ssgHelper";
 
-dayjs.extend(relativeTime);
+const SinglePostPage: NextPage<{ id: string }> = ({ id }: { id: string }) => {
+  const { data } = api.posts.getById.useQuery({
+    id,
+  });
 
-export default function PostPage() {
-  const { isLoaded: userLoaded } = useUser();
-
-  // start fetching early
-  api.posts.getAll.useQuery();
-
-  // Return empty div if both aren't loaded since user tends to load faster.
-  if (!userLoaded) return <div />;
+  if (!data) return <div>404</div>;
 
   return (
     <>
       <Head>
-        <title>Post</title>
+        <title>{`${data.post.content} - ${data.author.username}`}</title>
       </Head>
-      <main className="flex h-screen justify-center">
-        <div>Post View</div>
-      </main>
+      <PageLayout>
+        <PostView {...data} />
+      </PageLayout>
     </>
   );
-}
+};
+
+export const getStaticProps: GetStaticProps = async (context) => {
+  const ssg = generateSSGHelper();
+
+  const id = context.params?.id;
+
+  if (typeof id !== "string") throw new Error("No slug specified");
+
+  await ssg.posts.getById.prefetch({ id });
+
+  return {
+    props: {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      trpcState: JSON.parse(JSON.stringify(ssg.dehydrate())),
+      id,
+    },
+  };
+};
+
+export const getStaticPaths: GetStaticPaths = () => {
+  return {
+    paths: [],
+    fallback: "blocking",
+  };
+};
+
+export default SinglePostPage;
